@@ -1,4 +1,4 @@
--- Made by samet
+ -- Made by samet
 -- Customer has done AI modifications on this UI, do not blame me for the code.
 
 if getgenv().Library then
@@ -664,8 +664,11 @@ local Library do
     end
 
     Library.Round = function(self, Number, Float)
-        local Multiplier = 1 / (Float or 1)
-        return MathFloor(Number * Multiplier) / Multiplier
+        if not Float or Float == 0 then
+            return MathFloor(Number + 0.5)
+        end
+        local Multiplier = 1 / Float
+        return MathFloor((Number * Multiplier) + 0.5) / Multiplier
     end
 
     Library.Thread = function(self, Function)
