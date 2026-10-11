@@ -339,7 +339,7 @@ local Library do
         end
 
         Instances.ChangeItemTheme = function(self, Properties)
-            if not self.Instance then 
+            if not self.Instance or not Library then 
                 return
             end
 
@@ -3109,6 +3109,9 @@ local Library do
                 Items["Stroke"]:Tween(nil, {Color = Library.Theme.Accent})
                 task.wait(0.1)
                 Library:SafeCall(Button.Callback)
+                if not Library then
+                    return
+                end
                 Items["Stroke"]:ChangeItemTheme({Color = "Outline"})
                 Items["Stroke"]:Tween(nil, {Color = Library.Theme.Outline})
             end
