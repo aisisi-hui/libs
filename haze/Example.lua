@@ -1,12 +1,12 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/aisisi-hui/libs/refs/heads/main/haze/Library.lua"))()
 
--- Пример сборки
+-- Example setup
 --------------------------------------------------------------------
 local Window = Library.new({
 	Title = "haze",
 	Build = "dev-build",
 	ToggleKey = Enum.KeyCode.RightShift,
-	ConfigFolder = "my_script_configs", -- папка для сохранения конфигов
+	ConfigFolder = "my_script_configs", -- Folder used to save configs
 	Logo = "rbxassetid://9525535512",
 })
 
@@ -15,7 +15,7 @@ local Visuals = Window:Tab("Visuals", "rbxassetid://135154486332477")
 local Movement = Window:Tab("Movement", "rbxassetid://135154486332477")
 local Settings = Window:Tab("Settings", "rbxassetid://135154486332477")
 
--- Visuals: два столбца, в каждом по несколько панелей (высота — по содержимому)
+-- Visuals: two columns with sections that resize to fit their content
 do
 	local player = Visuals:Section("Player ESP", 225, 1)
 	player:Header("ESP Highlights")
@@ -50,7 +50,7 @@ do
 	misc:Toggle({ Name = "Fullbright", Flag = "Fullbright", Default = false })
 end
 
--- Combat: демо всех возможностей одного тоггла
+-- Combat: demonstrate all attachments available for a toggle
 do
 	local c = Combat:Section("Combat", 225)
 	c:Header("General")
@@ -68,7 +68,7 @@ do
 	c:Slider({ Name = "Value A", Flag = "CombatValueA", Min = 0, Max = 100, Default = 50, Step = 1 })
 end
 
--- Movement: контент выше страницы -> вся страница скроллится и фейдится по краям
+-- Movement: overflowing content scrolls with a fade at the top and bottom
 do
 	for i, label in ipairs({ "Group A", "Group B", "Group C", "Group D", "Group E" }) do
 		local m = Movement:Section(label, 225, 1)
@@ -76,18 +76,18 @@ do
 		m:Slider({ Name = "Value " .. i, Flag = "MoveValue" .. i, Min = 0, Max = 100, Default = 50, Step = 1 })
 	end
 
-	-- второй столбец короче: страница скроллится по самому высокому
+	-- The second column is shorter; scroll height follows the tallest column
 	local side = Movement:Section("Side panel", 237, 2)
 	side:Toggle({ Name = "Option X", Flag = "MoveOptionX" })
 	side:Slider({ Name = "Value X", Flag = "MoveValueX", Min = 0, Max = 10, Default = 5, Step = 0.5 })
 end
 
--- Settings: слева конфиги, справа настройки интерфейса
+-- Settings: configs on the left, interface settings on the right
 do
 	local cfg = Settings:Section("Configs", 225, 1)
 	local ui = Settings:Section("Interface", 237, 2)
 
-	-- Interface (в конфиги не сохраняется)
+	-- Interface settings are stored separately from configs
 	ui:Header("Menu")
 	ui:Toggle({
 		Name = "Watermark", Flag = "Watermark", Default = true, NoSave = true,
