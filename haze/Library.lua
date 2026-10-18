@@ -1,6 +1,7 @@
-local Players = game:GetService("Players")
+ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -101,6 +102,10 @@ end
 local HttpService = game:GetService("HttpService")
 
 local Library = { Flags = {}, Setters = {} }
+
+function Library.GetThemes()
+	return { "Default", "Graphite", "Midnight", "Amber", "Azure" }
+end
 
 local function encodeValue(v)
 	local t = typeof(v)
@@ -402,6 +407,8 @@ end
 
 function Library.new(opts)
 	opts = opts or {}
+	if _G.HazeMenu then _G.HazeMenu:Destroy() end
+	Library.Flags, Library.Setters = {}, {}
 	local title = opts.Title or "haze"
 	local build = opts.Build or "dev-build"
 	local configFolder = opts.ConfigFolder or "haze_menu"
@@ -801,7 +808,7 @@ function Library.new(opts)
 			Position = UDim2.fromOffset(opts.Logo and 116 or 97, 37),
 			Size = UDim2.fromOffset(100, 30),
 			BackgroundTransparency = 1,
-			Text = "haze",
+			Text = title,
 			Font = Theme.FontBold,
 			TextSize = 27,
 			TextColor3 = Theme.Text,
@@ -1234,27 +1241,44 @@ function Library.new(opts)
 			BorderSizePixel = 0,
 		}, wmContent)
 	end
-	local wmTitle = wmLabel(title, 1, true, Theme.Accent)
-	themeBindings[wmTitle].TextColor3 = "Accent"
-	wmSeparator(2)
-	local fpsLabel = wmLabel("-- fps", 3, false, Theme.Dim)
-	wmSeparator(4)
-	wmLabel(build, 5, false, Theme.Faint)
+	local watermarkParts = opts.Watermark
+	if type(watermarkParts) ~= "table" or #watermarkParts == 0 then
+		watermarkParts = { title, "fps", build }
+	end
+	local fpsLabels, pingLabels = {}, {}
+	for i, part in ipairs(watermarkParts) do
+		local value = tostring(part)
+		local token = value:lower()
+		local text = token == "fps" and "-- fps" or (token == "ping" and "-- ms" or value)
+		if i > 1 then wmSeparator(i * 2 - 2) end
+		local label = wmLabel(text, i * 2 - 1, i == 1, i == 1 and Theme.Accent or Theme.Dim)
+		if i == 1 then themeBindings[label].TextColor3 = "Accent" end
+		if token == "fps" then fpsLabels[#fpsLabels + 1] = label end
+		if token == "ping" then pingLabels[#pingLabels + 1] = label end
+	end
 
 	local frames, acc = 0, 0
 	connect(RunService.RenderStepped, function(dt)
 		frames += 1
 		acc += dt
 		if acc >= 0.25 then
-			fpsLabel.Text = string.format("%d fps", math.floor(frames / acc + 0.5))
+			local fpsText = string.format("%d fps", math.floor(frames / acc + 0.5))
+			for _, label in ipairs(fpsLabels) do label.Text = fpsText end
+			if #pingLabels > 0 then
+				local ok, ping = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+				local pingText = ok and type(ping) == "number" and string.format("%d ms", math.floor(ping + 0.5)) or "-- ms"
+				for _, label in ipairs(pingLabels) do label.Text = pingText end
+			end
 			frames, acc = 0, 0
 		end
 	end)
 
 	local wmEnabled = false
 	local wmToken = 0
+	window.WatermarkEnabled = opts.Watermark ~= false
 	function window:SetWatermark(v)
 		v = v == true
+		self.WatermarkEnabled = v
 		if destroyed or wmEnabled == v then return end
 		wmEnabled = v
 		wmToken += 1
@@ -1272,7 +1296,7 @@ function Library.new(opts)
 	end
 	task.defer(function()
 		if destroyed or wmToken ~= 0 then return end
-		window:SetWatermark(true)
+		window:SetWatermark(window.WatermarkEnabled)
 	end)
 
 	local KB_W = 190
@@ -2602,6 +2626,207 @@ function Library.new(opts)
 
 	function window:RefreshConfigs()
 		return Library.FS.list(configFolder)
+	end
+
+	-- Run after creating all feature controls; also usable without the built-in settings tab.
+	function window:LoadAutoload()
+		local name = preferences.Autoload
+		if not name then return true end
+		local ok, err = self:LoadConfig(name)
+		self:Notify({ Title = "Configs", Text = ok and ("Autoloaded '" .. name .. "'")
+			or ("Autoload failed: " .. tostring(err)) })
+		return ok, err, name
+	end
+
+	-- Call after registering the feature controls so autoload can apply their setters.
+	function window:SettingsTab(settingsOptions)
+		if self.Settings then return self.Settings end
+		settingsOptions = settingsOptions or {}
+		local Window = self
+		local Settings = self:Tab(settingsOptions.Name or "Settings", settingsOptions.Icon)
+		self.Settings = Settings
+		local cfg = Settings:Section("Configs", 225, 1)
+		local ui = Settings:Section("Interface", 237, 2)
+
+		-- Interface settings are stored separately from configs
+		ui:Header("Menu")
+		ui:Toggle({
+			Name = "Watermark", Flag = "Watermark", Default = Window.WatermarkEnabled, NoSave = true,
+			Callback = function(v) Window:SetWatermark(v) end,
+		})
+		ui:Toggle({
+			Name = "Keybind list", Flag = "KeybindList", Default = true, NoSave = true,
+			Callback = function(v) Window:SetKeybindList(v) end,
+		})
+		ui:Keybind({
+			Name = "Menu key", Flag = "__MenuKeyBind", NoSave = true,
+			Default = Window.MenuKey,
+			Callback = function(key) Window:SetMenuKey(key) end,
+		})
+		ui:Button({ Name = "Unload", Callback = function() Window:Destroy() end })
+		ui:Header("Appearance")
+		ui:Dropdown({
+			Name = "Theme", Flag = "__Theme", NoSave = true,
+			Options = Library.GetThemes(), Default = Window.Preferences.Theme,
+			Callback = function(name)
+				if name == Window.Preferences.Theme then return end
+				local ok, err = Window:SetTheme(name)
+				Window:Notify({ Title = "Theme", Text = ok and (name .. " applied") or err })
+			end,
+		})
+
+		-- Configs
+		local nameInput, listDD
+		local options = {}
+		local pendingDelete, deleteButton
+		local autoloadButton
+		local function cancelDelete()
+			pendingDelete = nil
+			if deleteButton then deleteButton.SetText("Delete") end
+		end
+		local function report(message)
+			Window:Notify({ Title = "Configs", Text = message })
+		end
+		local function updateAutoloadStatus()
+			if autoloadButton then
+				local selected = Library.FS.normalize(listDD.Get())
+				local active = selected ~= nil and Window.Preferences.Autoload == selected
+				autoloadButton.SetColorRole(active and "Text" or "Dim")
+			end
+		end
+
+		local function currentName()
+			local n = nameInput.Get():gsub("^%s+", ""):gsub("%s+$", "")
+			if n == "" then
+				n = listDD.Get()
+			end
+			return n
+		end
+
+		local function refresh()
+			local list, err = Window:RefreshConfigs()
+			if not list then
+				listDD.SetOptions({})
+				report(err)
+				return false
+			end
+			listDD.SetOptions(list)
+			updateAutoloadStatus()
+			return true
+		end
+
+		cfg:Header("Configs")
+		listDD = cfg:Dropdown({
+			Name = "Config list", Flag = "__cfgList", Options = options, NoSave = true,
+			Callback = function(v)
+				cancelDelete()
+				if nameInput and v ~= "" then
+					nameInput.Set(v)
+				end
+				updateAutoloadStatus()
+			end,
+		})
+		nameInput = cfg:Input({
+			Name = "Config name", Flag = "__cfgName", Placeholder = "new config",
+			Callback = cancelDelete,
+		})
+
+		local function saveConfig()
+			cancelDelete()
+			local name = currentName()
+			if name == "" then
+				report("Enter a config name")
+				return
+			end
+			local ok, err = Window:SaveConfig(name)
+			if ok then
+				report("Saved '" .. name .. "'")
+				refresh()
+				listDD.Set(Library.FS.normalize(name))
+			else
+				report(err)
+			end
+		end
+
+		local function loadConfig()
+			cancelDelete()
+			local name = currentName()
+			if name == "" then
+				report("Select a config")
+				return
+			end
+			local ok, err = Window:LoadConfig(name)
+			if ok then
+				report("Loaded '" .. name .. "'")
+			else
+				report(err)
+			end
+		end
+
+		local function deleteConfig()
+			local name = currentName()
+			if name == "" then
+				cancelDelete()
+				report("Select a config")
+				return
+			end
+			if pendingDelete ~= name then
+				pendingDelete = name
+				deleteButton.SetText("Sure?")
+				return
+			end
+			cancelDelete()
+			local ok, err = Window:DeleteConfig(name)
+			updateAutoloadStatus()
+			if ok then
+				report("Deleted '" .. name .. "'")
+				nameInput.Set("")
+				refresh()
+			else
+				report(err)
+			end
+		end
+
+		local function refreshConfigs()
+			cancelDelete()
+			if refresh() then
+				report("List updated")
+			end
+		end
+
+		cfg:ButtonRow({
+			{ Name = "Save", Callback = saveConfig },
+			{ Name = "Load", Callback = loadConfig },
+		})
+		local configActions = cfg:ButtonRow({
+			{ Name = "Delete", Callback = deleteConfig },
+			{ Name = "Refresh", Callback = refreshConfigs },
+		})
+		deleteButton = configActions[1]
+		autoloadButton = cfg:Button({ Name = "Autoload", Callback = function()
+			local name = Library.FS.normalize(listDD.Get())
+			if not name then report("Select a saved config") return end
+			local active = Window.Preferences.Autoload == name
+			local target = name
+			if active then target = false end
+			local ok, err = Window:SetAutoload(target)
+			updateAutoloadStatus()
+			if ok then
+				report(active and "Autoload disabled" or ("Autoload: " .. name))
+			else
+				report(err)
+			end
+		end })
+		updateAutoloadStatus()
+		refresh()
+		if settingsOptions.Autoload ~= false then
+			local ok, _, name = Window:LoadAutoload()
+			if ok and name then
+				listDD.Set(name)
+				nameInput.Set(name)
+			end
+		end
+		return Settings
 	end
 
 	task.defer(function()
